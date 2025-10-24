@@ -10,6 +10,9 @@ import { ChromePublisher } from './publishers/chrome.js';
 import { FirefoxPublisher } from './publishers/firefox.js';
 import { ConfigValidator } from './core/config.js';
 import { APIError, ValidationError } from './core/errors.js';
+import { Logger } from './core/logger.js';
+import { MetricsCollector } from './core/metrics.js';
+import { HealthCheck } from './core/health.js';
 import { Sanitizer } from './utils/sanitize.js';
 
 const DEFAULT_CONFIG_PATH = '.gatekeeperrc.json';
@@ -17,6 +20,12 @@ const SUPPORTED_STORES = {
   chrome: ChromePublisher,
   firefox: FirefoxPublisher
 };
+
+const logger = new Logger({
+  level: process.env.GATEKEEPER_LOG_LEVEL ?? 'info',
+  format: process.env.GATEKEEPER_LOG_FORMAT ?? 'json'
+});
+const metrics = new MetricsCollector();
 
 function parseStores(value, fallback = []) {
   const input = value ?? '';
@@ -95,15 +104,20 @@ async function publishForStore(store, publisher, uploadId, manifestDir, options)
   return publisher.publish(uploadId, undefined, publishOptions);
 }
 
-function logInfo(message) {
-  // eslint-disable-next-line no-console
-  console.log(message);
+function sanitizeContext(context = {}) {
+  return Sanitizer.sanitizeObject(context);
+}
+
+function logInfo(message, context = {}) {
+  logger.info(message, sanitizeContext(context));
 }
 
 async function logError(publisher, error, context = {}) {
-  const sanitizedContext = Sanitizer.sanitizeObject({ ...context, message: error.message });
-  // eslint-disable-next-line no-console
-  console.error(`❌ ${context.store ?? 'gatekeeper'}: ${error.message}`);
+  const sanitizedContext = sanitizeContext({ ...context, error: error?.message });
+  logger.error(error?.message ?? 'Unknown error', {
+    ...sanitizedContext,
+    errorType: error?.name
+  });
 
   if (publisher?.reportError) {
     await publisher.reportError(error, sanitizedContext);
@@ -155,6 +169,13 @@ export async function createCLI() {
       const manifestDir = path.dirname(manifestPath);
       const stores = parseStores(options.stores, config.browsers ?? []);
 
+      metrics.reset();
+      logInfo('Starting publish workflow', {
+        command: 'publish',
+        manifest: manifestPath,
+        stores
+      });
+
       if (stores.length === 0) {
         await logError(null, new ValidationError('No stores specified for publish command'), {
           store: 'gatekeeper',
@@ -174,12 +195,15 @@ export async function createCLI() {
           continue;
         }
 
-        logInfo(`🚀 Publishing to ${store}...`);
+        metrics.recordPublishAttempt(store);
+        const attemptStartedAt = Date.now();
+        logInfo('Publishing started', { store });
 
         try {
           await validateForStore(publisher, manifest, manifestDir);
-          logInfo(`✅ ${store}: manifest validated`);
+          logInfo('Manifest validated', { store });
         } catch (error) {
+          metrics.recordPublishFailure(store, error);
           await logError(publisher, error, { store, stage: 'validate' });
           process.exitCode = 1;
           continue;
@@ -188,8 +212,9 @@ export async function createCLI() {
         let artifact;
         try {
           artifact = await packageForStore(publisher, manifestDir);
-          logInfo(`📦 ${store}: packaged artifact at ${artifact}`);
+          logInfo('Artifact packaged', { store, artifact });
         } catch (error) {
+          metrics.recordPublishFailure(store, error);
           await logError(publisher, error, { store, stage: 'package' });
           process.exitCode = 1;
           continue;
@@ -198,8 +223,9 @@ export async function createCLI() {
         let uploadId;
         try {
           uploadId = await uploadForStore(publisher, artifact);
-          logInfo(`⬆️  ${store}: uploaded artifact (${uploadId})`);
+          logInfo('Artifact uploaded', { store, uploadId });
         } catch (error) {
+          metrics.recordUploadFailure(store, error);
           await logError(publisher, error, { store, stage: 'upload' });
           process.exitCode = 1;
           continue;
@@ -207,13 +233,25 @@ export async function createCLI() {
 
         try {
           const publishResult = await publishForStore(store, publisher, uploadId, manifestDir, options);
-          const publishUrl = publishResult?.url ? ` → ${publishResult.url}` : '';
-          logInfo(`🎉 ${store}: publish completed${publishUrl}`);
+          const durationMs = Date.now() - attemptStartedAt;
+          metrics.recordPublishSuccess(store, durationMs);
+          logInfo('Publish completed', {
+            store,
+            durationMs,
+            url: publishResult?.url ?? null
+          });
         } catch (error) {
+          metrics.recordPublishFailure(store, error);
           await logError(publisher, error, { store, stage: 'publish' });
           process.exitCode = 1;
         }
       }
+
+      const metricsSnapshot = metrics.getMetrics();
+      logInfo('Publish workflow complete', {
+        command: 'publish',
+        metrics: metricsSnapshot
+      });
     });
 
   program
@@ -245,6 +283,12 @@ export async function createCLI() {
       const manifestDir = path.dirname(manifestPath);
       const stores = parseStores(options.stores, config.browsers ?? []);
 
+      logInfo('Starting validation workflow', {
+        command: 'validate',
+        manifest: manifestPath,
+        stores
+      });
+
       if (stores.length === 0) {
         await logError(null, new ValidationError('No stores specified for validate command'), {
           store: 'gatekeeper',
@@ -267,7 +311,7 @@ export async function createCLI() {
 
         try {
           await validateForStore(publisher, manifest, manifestDir);
-          logInfo(`✅ ${store}: manifest validation succeeded`);
+          logInfo('Manifest validation succeeded', { store });
         } catch (error) {
           await logError(publisher, error, { store, stage: 'validate' });
           process.exitCode = 1;
@@ -301,15 +345,39 @@ export async function createCLI() {
         return;
       }
 
+      logInfo('Starting cancel workflow', {
+        command: 'cancel',
+        store,
+        uploadId: options.uploadId
+      });
+
       try {
         const cancelResult = await publisher.cancel(options.uploadId, config.credentials?.[store]);
         if (cancelResult) {
-          logInfo(`🛑 ${store}: cancel result ${JSON.stringify(cancelResult)}`);
+          logInfo('Cancel completed with response', { store, cancelResult });
         } else {
-          logInfo(`🛑 ${store}: cancel operation completed`);
+          logInfo('Cancel operation completed', { store });
         }
       } catch (error) {
         await logError(publisher, error, { store, stage: 'cancel' });
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('health')
+    .description('Run external service health checks')
+    .action(async () => {
+      logInfo('Starting health check workflow', { command: 'health' });
+
+      try {
+        const report = await HealthCheck.check();
+        logInfo('Health check complete', {
+          command: 'health',
+          health: report
+        });
+      } catch (error) {
+        await logError(null, error, { store: 'gatekeeper', stage: 'health' });
         process.exitCode = 1;
       }
     });
