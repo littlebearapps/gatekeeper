@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "zen": {
+      "command": "/Users/nathanschram/claude-code-tools/mcp/zen/zen-mcp-server/zen-mcp-server",
+      "env": {
+        "ZEN_INSTANCE": "instI",
+        "ZEN_PORT": "7519",
+        "ZEN_PROJECT_NAME": "gatekeeper"
+      }
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@context-labs/server-context7"],
+      "env": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      }
+    }
+  }
+}

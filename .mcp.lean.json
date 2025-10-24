@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "zen": {
+      "command": "/Users/nathanschram/claude-code-tools/mcp/zen/zen-mcp-server/zen-mcp-server",
+      "env": {
+        "ZEN_INSTANCE": "instI",
+        "ZEN_PORT": "7519",
+        "ZEN_PROJECT_NAME": "gatekeeper"
+      }
+    }
+  }
+}
