@@ -1,5 +1,6 @@
 import { ConfigValidator } from '../core/config.js';
 import { ValidationError } from '../core/errors.js';
+import { HomeostatReporter } from '../core/homeostat-reporter.js';
 import { Sanitizer } from '../utils/sanitize.js';
 
 function ensureError(error) {
@@ -17,6 +18,11 @@ export class BasePublisher {
     } catch (error) {
       throw error instanceof ValidationError ? error : new ValidationError(error.message);
     }
+
+    this.reporter = new HomeostatReporter({
+      githubToken: this.config.githubToken,
+      repo: this.config.repo
+    });
   }
 
   // Abstract methods
@@ -59,8 +65,6 @@ export class BasePublisher {
 
   async reportError(error, context = {}) {
     const normalizedError = ensureError(error);
-    const sanitizedContext = await this.sanitizeLogs(context);
-    // eslint-disable-next-line no-console
-    console.error('Publishing error:', normalizedError.message, sanitizedContext);
+    return this.reporter.reportPublishingError(normalizedError, context);
   }
 }

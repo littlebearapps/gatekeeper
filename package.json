@@ -30,6 +30,7 @@
     "vitest": "^1.1.0"
   },
   "dependencies": {
+    "@octokit/rest": "^22.0.0",
     "commander": "^11.1.0"
   }
 }

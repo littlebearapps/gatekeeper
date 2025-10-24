@@ -56,22 +56,23 @@ describe('BasePublisher', () => {
     expect(sanitized).toContain('[REDACTED_EDGE_CREDENTIAL]');
   });
 
-  it('logs sanitized error context', async () => {
+  it('delegates error reporting to HomeostatReporter', async () => {
     const publisher = new StubPublisher(VALID_CONFIG);
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reporterSpy = vi
+      .spyOn(publisher.reporter, 'reportPublishingError')
+      .mockResolvedValue('https://github.com/issues/1');
 
-    try {
-      await publisher.reportError(new Error('boom'), { token: VALID_CONFIG.githubToken, email: 'user@example.com' });
-      expect(spy).toHaveBeenCalledTimes(1);
-      const [, message, context] = spy.mock.calls[0];
-      expect(message).toBe('boom');
-      expect(context).toContain('[REDACTED_GITHUB_TOKEN]');
-      expect(context).not.toContain(VALID_CONFIG.githubToken);
-      expect(context).not.toContain('user@example.com');
-      expect(context).toContain('[REDACTED_EMAIL]');
-    } finally {
-      spy.mockRestore();
-    }
+    const context = { token: VALID_CONFIG.githubToken, email: 'user@example.com' };
+    const result = await publisher.reportError(new Error('boom'), context);
+
+    expect(reporterSpy).toHaveBeenCalledTimes(1);
+    const [errorArg, contextArg] = reporterSpy.mock.calls[0];
+    expect(errorArg).toBeInstanceOf(Error);
+    expect(errorArg.message).toBe('boom');
+    expect(contextArg).toEqual(context);
+    expect(result).toBe('https://github.com/issues/1');
+
+    reporterSpy.mockRestore();
   });
 
   it('sanitizes structured log objects by stringifying them', async () => {
