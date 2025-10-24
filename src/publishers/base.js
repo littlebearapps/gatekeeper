@@ -1,14 +1,6 @@
 import { ConfigValidator } from '../core/config.js';
 import { ValidationError } from '../core/errors.js';
-
-const SANITIZE_PATTERNS = [
-  { regex: /(gh[pous]_[A-Za-z0-9]{24,})/gi, replacement: '[REDACTED_TOKEN]' },
-  { regex: /CWS_[A-Za-z0-9_-]+/gi, replacement: '[REDACTED_CWS]' },
-  { regex: /AMO_[A-Za-z0-9_-]+/gi, replacement: '[REDACTED_AMO]' },
-  { regex: /EDGE_[A-Za-z0-9_-]+/gi, replacement: '[REDACTED_EDGE]' },
-  { regex: /[A-Za-z0-9]{40,}/g, replacement: '[REDACTED_TOKEN]' },
-  { regex: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '[REDACTED_EMAIL]' }
-];
+import { Sanitizer } from '../utils/sanitize.js';
 
 function ensureError(error) {
   if (error instanceof Error) {
@@ -53,14 +45,21 @@ export class BasePublisher {
       return '';
     }
 
-    const text = typeof logs === 'string' ? logs : JSON.stringify(logs, null, 2);
-    return SANITIZE_PATTERNS.reduce((acc, { regex, replacement }) => acc.replace(regex, replacement), text);
+    if (typeof logs === 'string') {
+      return Sanitizer.sanitize(logs);
+    }
+
+    if (typeof logs === 'object') {
+      const sanitizedObject = Sanitizer.sanitizeObject(logs);
+      return JSON.stringify(sanitizedObject, null, 2);
+    }
+
+    return Sanitizer.sanitize(String(logs));
   }
 
   async reportError(error, context = {}) {
     const normalizedError = ensureError(error);
-    const serializedContext = typeof context === 'string' ? context : JSON.stringify(context, null, 2);
-    const sanitizedContext = await this.sanitizeLogs(serializedContext);
+    const sanitizedContext = await this.sanitizeLogs(context);
     // eslint-disable-next-line no-console
     console.error('Publishing error:', normalizedError.message, sanitizedContext);
   }

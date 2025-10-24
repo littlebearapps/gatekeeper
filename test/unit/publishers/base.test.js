@@ -38,7 +38,8 @@ describe('BasePublisher', () => {
       'Chrome CWS_SECRET',
       'Firefox AMO_SECRET',
       'Edge EDGE_SECRET',
-      'Email user@example.com'
+      'Email user@example.com',
+      `Generic ${'A'.repeat(40)}`
     ].join(' ');
     const sanitized = await publisher.sanitizeLogs(logs);
 
@@ -47,11 +48,12 @@ describe('BasePublisher', () => {
     expect(sanitized).not.toContain('CWS_SECRET');
     expect(sanitized).not.toContain('AMO_SECRET');
     expect(sanitized).not.toContain('EDGE_SECRET');
+    expect(sanitized).toContain('[REDACTED_GITHUB_TOKEN]');
     expect(sanitized).toContain('[REDACTED_TOKEN]');
     expect(sanitized).toContain('[REDACTED_EMAIL]');
-    expect(sanitized).toContain('[REDACTED_CWS]');
-    expect(sanitized).toContain('[REDACTED_AMO]');
-    expect(sanitized).toContain('[REDACTED_EDGE]');
+    expect(sanitized).toContain('[REDACTED_CWS_CREDENTIAL]');
+    expect(sanitized).toContain('[REDACTED_AMO_CREDENTIAL]');
+    expect(sanitized).toContain('[REDACTED_EDGE_CREDENTIAL]');
   });
 
   it('logs sanitized error context', async () => {
@@ -63,7 +65,7 @@ describe('BasePublisher', () => {
       expect(spy).toHaveBeenCalledTimes(1);
       const [, message, context] = spy.mock.calls[0];
       expect(message).toBe('boom');
-      expect(context).toContain('[REDACTED_TOKEN]');
+      expect(context).toContain('[REDACTED_GITHUB_TOKEN]');
       expect(context).not.toContain(VALID_CONFIG.githubToken);
       expect(context).not.toContain('user@example.com');
       expect(context).toContain('[REDACTED_EMAIL]');
@@ -82,8 +84,8 @@ describe('BasePublisher', () => {
     const sanitized = await publisher.sanitizeLogs(logs);
 
     expect(typeof sanitized).toBe('string');
-    expect(sanitized).toContain('[REDACTED_CWS]');
-    expect(sanitized).toContain('[REDACTED_TOKEN]');
+    expect(sanitized).toContain('[REDACTED_CWS_CREDENTIAL]');
+    expect(sanitized).toContain('[REDACTED_GITHUB_TOKEN]');
     expect(sanitized).not.toContain('CWS_SECRET');
   });
 
