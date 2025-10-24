@@ -11,7 +11,7 @@
 
 1. [Executive Summary](#executive-summary)
 2. [Architecture Overview](#architecture-overview)
-3. [Integration with CloakPipe and Homeostat](#integration-with-cloakpipe-and-homeostat)
+3. [Integration with Homeostat via GitHub Issues](#integration-with-homeostat-via-github-issues)
 4. [Multi-Browser Support](#multi-browser-support)
 5. [Conditional Approval Gates](#conditional-approval-gates)
 6. [Native App Store Support Architecture](#native-app-store-support-architecture)
@@ -36,8 +36,10 @@
 
 **Gatekeeper** is a centralized browser extension publishing system that automates deployment to multiple browser stores (Chrome, Firefox, Edge, Safari) while integrating seamlessly with Little Bear Apps' existing infrastructure:
 
-- **CloakPipe**: Privacy-first error logging (3-tier: Local → Plausible → GitHub Issues)
 - **Homeostat**: Automated bug-fixing system (AI-powered with $9.28/year cost)
+  - Gatekeeper reports publishing errors as GitHub issues with `robot` label
+  - Homeostat automatically analyzes and fixes publishing errors
+  - No CloakPipe integration needed (CloakPipe is for browser extension runtime errors only)
 
 ### Why Gatekeeper?
 
@@ -64,7 +66,7 @@
 | **Scalability** | Adding 4th extension: 10 min vs 2 hours |
 | **Operating Cost** | $0/year (GitHub Actions included) |
 | **Multi-Browser** | Chrome, Firefox, Edge ready; Safari Phase 2 |
-| **Error Integration** | Publishing errors → CloakPipe → Homeostat |
+| **Error Integration** | Publishing errors → GitHub Issues (Octokit) → Homeostat |
 | **Approval Gates** | GitHub Environments with required reviewers |
 
 ### Architecture at a Glance
@@ -83,17 +85,18 @@
 │  - Validate manifest (cross-browser)                        │
 │  - Package extension (.zip, .xpi)                          │
 │  - Publish to stores (chrome.js, firefox.js, edge.js)     │
-│  - Report errors to CloakPipe                                  │
+│  - Report errors to GitHub Issues (Octokit)                │
 └────────────────────┬────────────────────────────────────────┘
                      │
          ┌───────────┴───────────┐
          ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐
-│  Browser Stores │     │  CloakPipe → Robot │
-│  - Chrome CWS   │     │  - Creates issue│
-│  - Firefox AMO  │     │  - robot label  │
-│  - Edge Store   │     └────────┬────────┘
-└─────────────────┘              ▼
+┌─────────────────┐     ┌─────────────────────────┐
+│  Browser Stores │     │  GitHub Issues API      │
+│  - Chrome CWS   │     │  - HomeostatReporter    │
+│  - Firefox AMO  │     │  - Creates issue        │
+│  - Edge Store   │     │  - 'robot' label        │
+└─────────────────┘     └────────┬────────────────┘
+                                 ▼
                         ┌─────────────────┐
                         │   Homeostat     │
                         │  - Auto-fix     │
@@ -161,29 +164,32 @@ Gatekeeper uses a **hybrid architecture** that balances code reuse with per-exte
 - All extensions get new browser support automatically
 
 **Integrates with Existing Infrastructure**:
-- CloakPipe: Publishing errors create GitHub issues
-- Homeostat: Automated fixes for publishing failures
+- Homeostat: Publishing errors create GitHub issues (via Octokit), auto-fix failures
+- CloakPipe: Separate system for browser extension runtime errors
 - GitHub Projects: Track releases across all extensions
 - Linear: ConvertMyFile, NoteBridge, PaletteKit task management
 
 ---
 
-## Integration with CloakPipe and Homeostat
+## Integration with Homeostat via GitHub Issues
 
 ### Publishing Error Flow
 
-Gatekeeper integrates seamlessly with CloakPipe and Homeostat to provide **automated error handling and fixes**:
+Gatekeeper integrates directly with Homeostat via GitHub Issues API to provide **automated error handling and fixes**:
 
 ```
 Extension publishes → Publishing fails (e.g., manifest error)
                            ↓
          @littlebearapps/gatekeeper catches error
                            ↓
-         Reports to CloakPipe: https://errors.littlebearapps.com/report
+         HomeostatReporter creates GitHub issue (Octokit)
+         - Uses exact Homeostat format
+         - Sanitizes PII (API tokens, credentials, secrets)
+         - Adds 'robot' label (triggers Homeostat)
                            ↓
-         CloakPipe sanitizes PII, creates GitHub issue with 'robot' label
+         Homeostat detects 'robot' label, parses issue
                            ↓
-         Homeostat detects 'robot' label, analyzes error
+         Homeostat analyzes error, selects AI tier (DeepSeek/GPT-5)
                            ↓
          Homeostat attempts automated fix (if applicable)
                            ↓
@@ -194,26 +200,376 @@ Extension publishes → Publishing fails (e.g., manifest error)
          If tests fail → Escalate to human (add 'needs-human-review' label)
 ```
 
-### CloakPipe Integration
+### Why Direct GitHub API (Not CloakPipe)?
 
-**How Gatekeeper Uses CloakPipe**:
+**Architectural Decision** (GPT-5 Analysis):
+
+CloakPipe is designed for **browser extension runtime errors** and is incompatible with Gatekeeper:
+
+| Aspect | CloakPipe | Gatekeeper |
+|--------|-----------|------------|
+| **Runtime** | Browser (chrome-extension://) | Node.js (GitHub Actions) |
+| **APIs Used** | chrome.storage.local, window | Node.js fs, crypto, Octokit |
+| **Origin Validation** | Requires chrome-extension:// | Cannot provide (runs in CI) |
+| **Error Type** | Runtime (user actions) | Publishing (CI/CD failures) |
+| **Breadcrumbs** | User interactions | Publishing steps |
+
+**Solution**: Direct GitHub API integration via Octokit with Homeostat's exact format.
+
+---
+
+### Separation of Concerns: CloakPipe vs Gatekeeper
+
+**Two Distinct Error Domains**:
+
+Gatekeeper and CloakPipe are **complementary systems** that handle different types of errors:
+
+| System | Error Domain | Trigger | Environment |
+|--------|--------------|---------|-------------|
+| **CloakPipe** | Browser extension runtime errors | User encounters error during normal usage | User's browser (Chrome, Firefox, Edge) |
+| **Gatekeeper** | Publishing errors | GitHub Release triggers publishing workflow | CI/CD (GitHub Actions, Node.js) |
+
+**Architecture: Two Parallel Paths to Homeostat**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    RUNTIME ERRORS (CloakPipe)                │
+└─────────────────────────────────────────────────────────────┘
+
+User Browser → Extension runs → Error occurs → CloakPipe captures
+                                                      ↓
+                                        chrome.storage.local (Tier 1)
+                                                      ↓
+                                        Plausible Analytics (Tier 2)
+                                                      ↓
+                                        Cloudflare Worker (Tier 3)
+                                                      ↓
+                                        GitHub Issues API
+                                                      ↓
+                                        Homeostat (auto-fix)
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                  PUBLISHING ERRORS (Gatekeeper)              │
+└─────────────────────────────────────────────────────────────┘
+
+GitHub Release → Gatekeeper workflow → Publishing fails
+                                                      ↓
+                                        HomeostatReporter (Node.js)
+                                                      ↓
+                                        GitHub Issues API (Octokit)
+                                                      ↓
+                                        Homeostat (auto-fix)
+```
+
+**When Each System Activates**:
+
+| Trigger | CloakPipe | Gatekeeper |
+|---------|-----------|------------|
+| User clicks button in extension | ✅ Yes (if error occurs) | ❌ No |
+| Extension API call fails | ✅ Yes | ❌ No |
+| User submits error report | ✅ Yes (Tier 3 only) | ❌ No |
+| GitHub Release created | ❌ No | ✅ Yes |
+| Manifest validation fails | ❌ No | ✅ Yes |
+| Store API returns error | ❌ No | ✅ Yes |
+
+**Why They Cannot Share Infrastructure**:
+
+1. **Origin Validation Incompatibility**
+   - CloakPipe Worker validates `chrome-extension://[ext-id]` origins
+   - Gatekeeper runs in GitHub Actions (no chrome-extension:// origin)
+   - Worker would reject all Gatekeeper requests
+
+2. **Different Runtime Environments**
+   - CloakPipe: Browser APIs (chrome.storage.local, window, navigator)
+   - Gatekeeper: Node.js APIs (fs, crypto, child_process, Octokit)
+   - No shared runtime between browser and CI/CD
+
+3. **Different Error Contexts**
+   - CloakPipe: User actions, breadcrumbs from UI interactions
+   - Gatekeeper: Publishing steps, breadcrumbs from CI/CD phases
+   - Error types don't overlap (TypeError vs ValidationError)
+
+4. **Different PII Sanitization Needs**
+   - CloakPipe: User file paths, extension IDs, user data
+   - Gatekeeper: API tokens, store credentials, GitHub secrets
+   - Sanitization patterns are domain-specific
+
+**Benefits of Separation**:
+
+✅ **Domain Optimization**: Each system optimized for its specific error domain
+✅ **No Coupling**: Runtime errors and publishing errors remain independent
+✅ **Simpler Architecture**: No shared worker infrastructure to maintain
+✅ **Homeostat Compatibility**: Both systems send exact Homeostat format
+✅ **Future Flexibility**: Can evolve each system independently
+
+**Homeostat's Role**:
+
+Homeostat acts as the **unified auto-fix engine** for both systems:
+- Receives GitHub issues with `robot` label from **both** CloakPipe and Gatekeeper
+- Parses issues using the **same exact format** (see below)
+- Routes to appropriate AI tier (DeepSeek/GPT-5) based on error type
+- Attempts automated fixes regardless of error source
+- Creates PRs or escalates to humans
+
+**Example: Same Extension, Different Error Types**:
+
+```
+[ConvertMyFile] TypeError: Cannot read property 'sync' of undefined
+Source: CloakPipe (user clicked "Sync Now" in browser)
+Breadcrumbs: User actions (clicked button, called API, error thrown)
+
+vs
+
+[ConvertMyFile] ValidationError: Manifest field 'permissions' missing
+Source: Gatekeeper (GitHub Release triggered publishing)
+Breadcrumbs: Publishing steps (validated manifest, packaging failed)
+```
+
+Both go to Homeostat, but represent different failure domains.
+
+---
+
+### Homeostat Issue Format Requirements
+
+**Title Format** (REQUIRED):
+```
+[ExtensionName] ErrorType: Error message
+```
+
+**Examples**:
+- `[ConvertMyFile] ValidationError: Manifest field 'icons' is required`
+- `[NoteBridge] APIError: Chrome Web Store API returned 403 Forbidden`
+- `[PaletteKit] PackagingError: Failed to create .zip artifact`
+
+**Body Format** (REQUIRED):
+
+```markdown
+## Error Details
+- Extension: ExtensionName v1.2.3
+- Error Type: ValidationError
+- Message: Manifest field 'icons' is required
+- Timestamp: 2025-10-24T12:34:56Z
+- Fingerprint: abc123def456
+
+## Stack Trace
+```
+Error: Manifest field 'icons' is required
+    at validateManifest (validator.js:42:15)
+    at ChromePublisher.publish (chrome.js:28:10)
+
+Chrome Web Store API Response:
+{
+  "error": {
+    "code": 400,
+    "message": "Invalid manifest"
+  }
+}
+```
+
+## Breadcrumbs
+1. Started Gatekeeper publish workflow
+2. Loaded extension manifest (ConvertMyFile v1.2.3)
+3. Validated manifest for Chrome Web Store
+4. Publishing failed at validation phase
+
+## Publishing Context
+- Store: Chrome Web Store
+- Phase: validation
+- Item ID: abc123xyz
+- CI Environment: GitHub Actions
+- Run URL: https://github.com/owner/repo/actions/runs/123
+- Commit: a1b2c3d
+```
+
+**Required Labels**:
+- `robot` (triggers Homeostat)
+- Extension name: `convert-my-file`, `notebridge`, or `palette-kit`
+- Store: `store:chrome`, `store:firefox`, `store:edge`
+- Phase: `phase:validation`, `phase:upload`, `phase:publish`
+
+### Error Type Classification
+
+Gatekeeper classifies publishing errors into these types (Homeostat-compatible):
+
+| Error Type | Trigger Conditions | Homeostat Tier |
+|------------|-------------------|----------------|
+| **ValidationError** | Manifest validation fails | Tier 2 (GPT-5 review) |
+| **APIError** | Store API returns 4xx/5xx | Tier 2 (GPT-5 review) |
+| **NetworkError** | ECONNREFUSED, ETIMEDOUT | Tier 1 (DeepSeek retry) |
+| **AuthenticationError** | 401/403 responses | Tier 3 (GPT-5 security) |
+| **QuotaExceededError** | 429 rate limit responses | Tier 1 (DeepSeek retry) |
+| **PackagingError** | .zip creation fails | Tier 2 (GPT-5 review) |
+
+### HomeostatReporter Implementation
 
 ```javascript
-// In @littlebearapps/gatekeeper/src/publishers/chrome.js
+// @littlebearapps/gatekeeper/src/core/homeostat-reporter.js
 
-import { ErrorCloakPipe } from '../core/cloakpipe.js';
+import { Octokit } from '@octokit/rest';
+import crypto from 'crypto';
+
+export class HomeostatReporter {
+  constructor(config) {
+    this.octokit = new Octokit({ auth: config.githubToken });
+    this.repo = config.repo; // "owner/repo"
+  }
+
+  async reportPublishingError(error, context) {
+    const { extension, version, store, phase, itemId } = context;
+
+    const errorType = this.classifyError(error, phase);
+    const fingerprint = this.generateFingerprint(error, context);
+    const breadcrumbs = this.buildBreadcrumbs(context);
+
+    const sanitizedMessage = this.sanitizeSecrets(error.message);
+    const sanitizedStack = this.sanitizeSecrets(error.stack || '');
+
+    // EXACT format for Homeostat
+    const title = `[${extension}] ${errorType}: ${sanitizedMessage.substring(0, 100)}`;
+
+    const body = `
+## Error Details
+- Extension: ${extension} v${version}
+- Error Type: ${errorType}
+- Message: ${sanitizedMessage}
+- Timestamp: ${new Date().toISOString()}
+- Fingerprint: ${fingerprint}
+
+## Stack Trace
+\`\`\`
+${sanitizedStack}
+
+${store} API Response:
+${this.sanitizeSecrets(JSON.stringify(error.apiResponse || {}, null, 2))}
+\`\`\`
+
+## Breadcrumbs
+${breadcrumbs.map((bc, i) => `${i + 1}. ${bc}`).join('\n')}
+
+## Publishing Context
+- Store: ${store}
+- Phase: ${phase}
+- Item ID: ${itemId || 'N/A'}
+- CI Environment: ${process.env.CI ? 'GitHub Actions' : 'Local'}
+- Run URL: ${this.getRunUrl()}
+- Commit: ${process.env.GITHUB_SHA?.substring(0, 7) || 'unknown'}
+`;
+
+    const [owner, repoName] = this.repo.split('/');
+
+    const issue = await this.octokit.issues.create({
+      owner,
+      repo: repoName,
+      title,
+      body,
+      labels: [
+        'robot',                    // Required by Homeostat
+        extension.toLowerCase(),    // Required by Homeostat
+        'gatekeeper',
+        `store:${store}`,
+        `phase:${phase}`
+      ]
+    });
+
+    return issue.data.html_url;
+  }
+
+  classifyError(error, phase) {
+    if (phase === 'validation') return 'ValidationError';
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') return 'NetworkError';
+    if (error.response?.status === 401 || error.response?.status === 403) return 'AuthenticationError';
+    if (error.response?.status === 429) return 'QuotaExceededError';
+    if (error.code?.startsWith('PACKAGING_')) return 'PackagingError';
+    if (error.response?.status >= 400) return 'APIError';
+    return 'Error';
+  }
+
+  generateFingerprint(error, context) {
+    const input = `${error.message}|${context.store}|${context.phase}`;
+    return crypto.createHash('sha256').update(input).digest('hex').substring(0, 12);
+  }
+
+  buildBreadcrumbs(context) {
+    const bc = ['Started Gatekeeper publish workflow'];
+    bc.push(`Loaded extension manifest (${context.extension} v${context.version})`);
+    if (context.manifestValidated) bc.push(`Validated manifest for ${context.store}`);
+    if (context.packaged) bc.push(`Packaged extension to ${context.packagePath}`);
+    if (context.uploaded) bc.push(`Uploaded to ${context.store} API`);
+    if (context.submitted) bc.push(`Submitted for review on ${context.store}`);
+    bc.push(`Publishing failed at ${context.phase} phase`);
+    return bc;
+  }
+
+  sanitizeSecrets(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/([a-zA-Z0-9_-]{40,})/g, '[REDACTED_TOKEN]')
+      .replace(/(sk-[a-zA-Z0-9]{48})/g, '[REDACTED_API_KEY]')
+      .replace(/(ghp_[a-zA-Z0-9]{36})/g, '[REDACTED_GITHUB_TOKEN]')
+      .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '[REDACTED_EMAIL]')
+      .replace(/(CWS_[A-Z_]+)/g, '[REDACTED_CWS_CREDENTIAL]')
+      .replace(/(AMO_[A-Z_]+)/g, '[REDACTED_AMO_CREDENTIAL]');
+  }
+
+  getRunUrl() {
+    if (!process.env.GITHUB_ACTIONS) return 'N/A';
+    const { GITHUB_SERVER_URL, GITHUB_REPOSITORY, GITHUB_RUN_ID } = process.env;
+    return `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}`;
+  }
+}
+```
+
+### Publisher Integration Example
+
+```javascript
+// @littlebearapps/gatekeeper/src/publishers/chrome.js
+
+import { HomeostatReporter } from '../core/homeostat-reporter.js';
 
 export class ChromePublisher extends BasePublisher {
+  constructor(config) {
+    super(config);
+    this.reporter = new HomeostatReporter({
+      githubToken: config.githubToken,
+      repo: config.repo  // e.g., "littlebearapps/convert-my-file"
+    });
+  }
+
   async publish(artifact, credentials) {
+    const context = {
+      extension: artifact.name,
+      version: artifact.version,
+      store: 'Chrome Web Store',
+      phase: 'started',
+      itemId: credentials.itemId,
+      manifestValidated: false,
+      packaged: false,
+      uploaded: false,
+      submitted: false
+    };
+
     try {
       // Validate manifest
+      context.phase = 'validation';
       await this.validate(artifact.manifest);
+      context.manifestValidated = true;
+
+      // Package extension
+      context.phase = 'packaging';
+      const packagePath = await this.package(artifact);
+      context.packaged = true;
+      context.packagePath = packagePath;
 
       // Upload to CWS
-      const uploadResult = await this.upload(artifact, credentials);
+      context.phase = 'upload';
+      const uploadResult = await this.upload(packagePath, credentials);
+      context.uploaded = true;
 
       // Publish (staged or immediate)
+      context.phase = 'publish';
       const publishResult = await this.publishVersion(uploadResult.id, credentials);
+      context.submitted = true;
 
       return {
         success: true,
@@ -222,30 +578,14 @@ export class ChromePublisher extends BasePublisher {
         url: publishResult.itemUrl
       };
     } catch (error) {
-      // Report to CloakPipe → Creates GitHub issue with 'robot' label
-      await ErrorCloakPipe.report({
-        extension: artifact.name,
-        errorType: 'PublishingError',
-        message: `Failed to publish to Chrome: ${error.message}`,
-        context: {
-          store: 'chrome',
-          version: artifact.version,
-          phase: error.phase || 'unknown'  // upload, validate, publish
-        },
-        stackTrace: error.stack
-      });
+      // Report to Homeostat via GitHub Issues
+      const issueUrl = await this.reporter.reportPublishingError(error, context);
 
+      console.error(`Publishing error reported to Homeostat: ${issueUrl}`);
       throw error;
     }
   }
 }
-```
-
-**CloakPipe Configuration**:
-- Endpoint: `https://errors.littlebearapps.com/report` (Cloudflare Worker)
-- PII Sanitization: 18+ patterns (user paths, API keys, tokens, emails)
-- Issue Format: `[Gatekeeper] PublishingError: Failed to publish ConvertMyFile v1.2.3 to Chrome`
-- Labels: `robot` (triggers Homeostat), `gatekeeper`, `chrome` (or `firefox`, `edge`)
 
 ### Homeostat Integration
 
@@ -323,9 +663,11 @@ async function attemptPublishingFix(error, issueNumber) {
 ### Integration Benefits
 
 **Automated Error Recovery**:
-- Publishing fails → CloakPipe creates issue → Homeostat fixes → Retry succeeds
+- Publishing fails → Gatekeeper creates GitHub issue → Homeostat fixes → Retry succeeds
 - No manual intervention for common errors (manifest, permissions, CSP)
 - Human only involved when automated fixes fail (< 20% of cases)
+- Direct GitHub API integration (no intermediate services)
+- Exact Homeostat format ensures reliable parsing
 
 **Cost Efficiency**:
 - Homeostat: $9.28/year for 1,000 fixes
@@ -357,7 +699,17 @@ Each browser has a dedicated publisher module implementing a common interface:
 ```javascript
 // @littlebearapps/gatekeeper/src/publishers/base.js
 
+import { HomeostatReporter } from '../core/homeostat-reporter.js';
+
 export class BasePublisher {
+  constructor(config) {
+    // All publishers get Homeostat error reporting
+    this.reporter = new HomeostatReporter({
+      githubToken: config.githubToken,
+      repo: config.repo
+    });
+  }
+
   // Abstract methods all publishers must implement
   async validate(manifest) { throw new Error('Not implemented'); }
   async package(manifest, outputPath) { throw new Error('Not implemented'); }
@@ -372,8 +724,8 @@ export class BasePublisher {
   }
 
   async reportError(error, context) {
-    // Report to CloakPipe for all publishers
-    await ErrorCloakPipe.report({ ...error, context });
+    // Report to Homeostat via GitHub Issues for all publishers
+    return await this.reporter.reportPublishingError(error, context);
   }
 }
 ```
@@ -977,7 +1329,7 @@ npx @littlebearapps/gatekeeper publish \
 **Business Benefits**:
 - ✅ Ready for platform expansion (no architectural debt)
 - ✅ Consistent publishing workflows across all platforms
-- ✅ Shared error handling and monitoring (CloakPipe/Homeostat)
+- ✅ Shared error handling and monitoring (Homeostat via GitHub Issues)
 - ✅ Developer familiarity (same CLI for all stores)
 
 ---
@@ -1713,7 +2065,7 @@ console.log(results);
    - Create `BasePublisher` abstract class
    - Define common methods (validate, package, upload, publish, cancel)
    - Implement PII sanitization utilities
-   - Implement error reporting to CloakPipe
+   - Integrate HomeostatReporter for error reporting
 
 3. **Implement Chrome Publisher** (2 hours)
    - CWS API v2 integration
@@ -1760,52 +2112,84 @@ npm publish @littlebearapps/gatekeeper@0.1.0
 
 ---
 
-### Phase 2: CloakPipe Integration (1 hour)
+### Phase 2: Homeostat Error Reporting Integration (1 hour)
 
-**Goal**: Integrate publishing error reporting with CloakPipe
+**Goal**: Integrate publishing error reporting with Homeostat via GitHub Issues API
 
 **Tasks**:
 
-1. **Add CloakPipe Client** (30 min)
-   - Create `src/core/cloakpipe.js` module
-   - Integrate with CloakPipe endpoint: `https://errors.littlebearapps.com/report`
-   - PII sanitization for publishing errors
-   - Error formatting for GitHub issues
+1. **Install Octokit Dependency** (5 min)
+   - Add `@octokit/rest` to package.json
+   - Install dependency: `npm install @octokit/rest`
 
-2. **Update Publishers with Error Reporting** (30 min)
+2. **Create HomeostatReporter Module** (30 min)
+   - Create `src/core/homeostat-reporter.js` module
+   - Implement `reportPublishingError()` method
+   - Add error type classification logic
+   - Add fingerprint generation
+   - Add breadcrumb building
+   - Add PII sanitization (API tokens, credentials, secrets)
+   - Add GitHub API integration via Octokit
+   - Format issues with exact Homeostat specification
+
+3. **Update Publishers with Error Reporting** (25 min)
+   - Add HomeostatReporter to all publisher constructors
    - Add try-catch blocks in all publisher methods
-   - Report errors to CloakPipe with context (store, version, phase)
-   - Test error flow: Publishing failure → CloakPipe → GitHub issue
+   - Build context object (extension, version, store, phase, itemId)
+   - Report errors to Homeostat with context
+   - Test error flow: Publishing failure → GitHub issue → Homeostat
 
-**Example Error Logging**:
+**Example HomeostatReporter Usage**:
 
 ```javascript
-// In src/core/cloakpipe.js
+// In src/publishers/chrome.js
 
-export class ErrorCloakPipe {
-  static async report({ extension, errorType, message, context, stackTrace }) {
-    // Sanitize PII
-    const sanitizedStack = sanitize(stackTrace);
-    const sanitizedMessage = sanitize(message);
+import { HomeostatReporter } from '../core/homeostat-reporter.js';
 
-    // Report to CloakPipe endpoint
-    await fetch('https://errors.littlebearapps.com/report', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        extension: 'gatekeeper',
-        errorType,
-        message: `[${extension}] ${sanitizedMessage}`,
-        context: {
-          ...context,
-          store: context.store,
-          version: context.version,
-          phase: context.phase
-        },
-        stackTrace: sanitizedStack,
-        timestamp: new Date().toISOString()
-      })
+export class ChromePublisher extends BasePublisher {
+  constructor(config) {
+    super(config);
+    this.reporter = new HomeostatReporter({
+      githubToken: config.githubToken,
+      repo: config.repo  // "littlebearapps/convert-my-file"
     });
+  }
+
+  async publish(artifact, credentials) {
+    const context = {
+      extension: artifact.name,
+      version: artifact.version,
+      store: 'Chrome Web Store',
+      phase: 'started',
+      itemId: credentials.itemId,
+      manifestValidated: false,
+      packaged: false,
+      uploaded: false
+    };
+
+    try {
+      context.phase = 'validation';
+      await this.validate(artifact.manifest);
+      context.manifestValidated = true;
+
+      context.phase = 'packaging';
+      const packagePath = await this.package(artifact);
+      context.packaged = true;
+
+      context.phase = 'upload';
+      const uploadResult = await this.upload(packagePath, credentials);
+      context.uploaded = true;
+
+      context.phase = 'publish';
+      const publishResult = await this.publishVersion(uploadResult.id, credentials);
+
+      return { success: true, store: 'chrome', version: artifact.version };
+    } catch (error) {
+      // Report to Homeostat via GitHub Issues
+      const issueUrl = await this.reporter.reportPublishingError(error, context);
+      console.error(`Publishing error reported to Homeostat: ${issueUrl}`);
+      throw error;
+    }
   }
 }
 ```
@@ -1819,12 +2203,12 @@ npx @littlebearapps/gatekeeper publish \
   --stores chrome
 
 # Verify GitHub issue created:
-# Title: [Gatekeeper] PublishingError: Failed to publish TestExtension v1.0.0 to Chrome
-# Labels: robot, gatekeeper, chrome
-# Body: Sanitized error details
+# Title: [ConvertMyFile] ValidationError: Manifest field 'icons' is required
+# Labels: robot, convert-my-file, gatekeeper, store:chrome, phase:validation
+# Body: Exact Homeostat format with Error Details, Stack Trace, Breadcrumbs, Publishing Context
 ```
 
-**Deliverable**: CloakPipe integration complete and tested
+**Deliverable**: Homeostat error reporting integration complete and tested
 
 ---
 
@@ -1991,7 +2375,7 @@ const PUBLISHING_ERROR_PATTERNS = {
 
 3. **Test Automated Fixes** (1 hour)
    - Trigger manifest validation error
-   - Verify CloakPipe creates issue
+   - Verify Gatekeeper creates GitHub issue via Octokit
    - Verify Homeostat detects and fixes
    - Verify tests pass
    - Verify PR created and merged
@@ -2122,7 +2506,7 @@ function isRetryable(error) {
 
 **Solution**:
 ```javascript
-async function publishToMultipleStores(stores, artifact, credentials) {
+async function publishToMultipleStores(stores, artifact, credentials, reporter) {
   const results = {};
 
   // Attempt all stores, even if one fails
@@ -2136,13 +2520,16 @@ async function publishToMultipleStores(stores, artifact, credentials) {
         error: error.message
       };
 
-      // Report to CloakPipe
-      await ErrorCloakPipe.report({
+      // Report to Homeostat via GitHub Issues
+      const context = {
         extension: artifact.name,
-        errorType: 'PublishingError',
-        message: `Failed to publish to ${store}: ${error.message}`,
-        context: { store, version: artifact.version }
-      });
+        version: artifact.version,
+        store,
+        phase: error.phase || 'unknown',
+        itemId: credentials[store]?.itemId
+      };
+
+      await reporter.reportPublishingError(error, context);
     }
   }
 
@@ -2579,9 +2966,9 @@ npx @littlebearapps/gatekeeper publish \
 | Phase | Duration | Description |
 |-------|----------|-------------|
 | Phase 1 | 5-7 hours | Core npm package (Chrome + Firefox) + CWS API v2 enhancements + Native app store architecture |
-| Phase 2 | 1 hour | CloakPipe integration |
+| Phase 2 | 1 hour | Homeostat error reporting integration (GitHub Issues API via Octokit) |
 | Phase 3 | 2-3 hours | Extension integration (all 3 extensions) |
-| Phase 4 | 1-2 hours | Homeostat integration |
+| Phase 4 | 1-2 hours | Pilot deployment and testing |
 | Phase 5 | 2-3 hours | Edge publisher + monitoring |
 | **Total** | **12-17 hours** | Complete implementation |
 
@@ -2691,7 +3078,7 @@ npx @littlebearapps/gatekeeper publish \
 - ✅ All 3 extensions successfully publish to Chrome Web Store
 - ✅ All 3 extensions successfully publish to Firefox Add-ons
 - ✅ All 3 extensions successfully publish to Microsoft Edge (Phase 5)
-- ✅ Publishing errors reported to CloakPipe (GitHub issues created)
+- ✅ Publishing errors reported to Homeostat (GitHub issues via Octokit)
 - ✅ Homeostat can fix common publishing errors (manifest, permissions, CSP)
 - ✅ 100% test coverage for publisher modules (unit + integration)
 - ✅ Zero manual steps required (except approval gate)
@@ -2745,7 +3132,7 @@ npx @littlebearapps/gatekeeper publish \
 │   ├── core/
 │   │   ├── validator.js         # Manifest validation (web-ext)
 │   │   ├── packager.js          # .zip/.xpi creation
-│   │   ├── cloakpipe.js            # CloakPipe integration
+│   │   ├── homeostat-reporter.js # Homeostat error reporting (Octokit)
 │   │   └── config.js            # Configuration management
 │   └── utils/
 │       ├── auth.js              # Store authentication
@@ -3128,9 +3515,9 @@ gh release create v1.1.0 \
 
 ---
 
-### Step 7: Verify CloakPipe Integration (5 minutes)
+### Step 7: Verify Homeostat Error Reporting (5 minutes)
 
-**Action**: Ensure publishing errors are reported to CloakPipe
+**Action**: Ensure publishing errors are reported to Homeostat via GitHub Issues
 
 #### 7.1: Trigger Validation Error
 
@@ -3140,15 +3527,17 @@ Create invalid manifest to test error reporting:
 # Temporarily break manifest.json (e.g., remove required field)
 # Trigger workflow
 # Check GitHub issues for new issue with:
-# - Title: [Gatekeeper] PublishingError: Failed to publish...
-# - Labels: robot, gatekeeper, chrome (or firefox, edge)
+# - Title: [ExtensionName] ValidationError: Manifest field 'icons' is required
+# - Labels: robot, extension-name, gatekeeper, store:chrome, phase:validation
+# - Body: Exact Homeostat format (Error Details, Stack Trace, Breadcrumbs, Publishing Context)
 ```
 
 #### 7.2: Verify Homeostat Response
 
-After CloakPipe creates issue:
+After Gatekeeper creates issue via GitHub Issues API:
 - ✅ Homeostat detects `robot` label
-- ✅ Homeostat analyzes error
+- ✅ Homeostat parses issue using exact format
+- ✅ Homeostat analyzes error and selects AI tier
 - ✅ Homeostat attempts fix (if applicable)
 - ✅ Homeostat creates PR or escalates to human
 
@@ -3224,7 +3613,7 @@ Use this checklist when integrating Gatekeeper into each extension:
 - [ ] **Test Patch Release** (v1.0.1 - should auto-publish)
 - [ ] **Test Minor Release** (v1.1.0 - should require approval)
 - [ ] **Verify Stores**: Check Chrome, Firefox, Edge for published extension
-- [ ] **Test Error Reporting**: Trigger validation error, verify CloakPipe creates issue
+- [ ] **Test Error Reporting**: Trigger validation error, verify GitHub issue created via Octokit
 - [ ] **Verify Homeostat**: Confirm automated fix attempt (if applicable)
 
 ### Documentation
@@ -3325,7 +3714,7 @@ Use this checklist when integrating Gatekeeper into each extension:
 - [ ] Verify all extensions have CI/CD (tests run on PR)
 - [ ] Verify all extensions have test suites
 - [ ] Verify package.json and manifest.json versions match
-- [ ] Verify CloakPipe endpoint supports publishing errors
+- [ ] Verify GitHub token has `repo` scope for creating issues
 
 ---
 
@@ -3342,8 +3731,8 @@ Use this checklist when integrating Gatekeeper into each extension:
 #### Integration Prerequisites
 
 - [ ] Verify NoteBridge and PaletteKit have CI/CD
-- [ ] Verify CloakPipe is deployed (NoteBridge already has it)
-- [ ] Verify Homeostat is configured
+- [ ] Verify Homeostat is configured with `robot` label trigger
+- [ ] Verify GitHub token has `repo` scope for Octokit
 - [ ] Verify GitHub Projects access for tracking releases
 - [ ] Verify Linear integration (if using for task management)
 
@@ -3433,7 +3822,7 @@ gh release edit v1.2.3 \
 
 ---
 
-### Example 2: Publishing Error Triggers CloakPipe and Homeostat
+### Example 2: Publishing Error Triggers Homeostat Auto-Fix
 
 **Step 1: Publishing Fails**
 
@@ -3448,20 +3837,21 @@ npx @littlebearapps/gatekeeper publish \
    - Validated manifest: FAILED
    - Error: ManifestValidationError: Missing required field 'permissions'
 
-Publishing failed. Reporting to CloakPipe...
+Publishing failed. Reporting to Homeostat via GitHub Issues...
+Publishing error reported to Homeostat: https://github.com/littlebearapps/convert-my-file/issues/42
 ```
 
-**Step 2: CloakPipe Creates GitHub Issue**
+**Step 2: Gatekeeper Creates GitHub Issue**
 
 ```
-Title: [Gatekeeper] PublishingError: Failed to publish ConvertMyFile v1.2.3 to Chrome
+Title: [ConvertMyFile] ValidationError: Missing required field 'permissions'
 
-Labels: robot, gatekeeper, chrome
+Labels: robot, convert-my-file, gatekeeper, store:chrome, phase:validation
 
 Body:
 ## Error Details
 - Extension: ConvertMyFile v1.2.3
-- Error Type: ManifestValidationError
+- Error Type: ValidationError
 - Message: Missing required field 'permissions'
 - Timestamp: 2025-10-24T10:30:00Z
 - Fingerprint: abc123def456
@@ -3582,7 +3972,8 @@ npx @littlebearapps/gatekeeper publish \
    - Signed with AMO: FAILED
    - Error: AMO API returned 429 (rate limit exceeded)
 
-Reporting to CloakPipe...
+Reporting to Homeostat via GitHub Issues...
+Publishing error reported: https://github.com/littlebearapps/convert-my-file/issues/43
 ```
 
 **Step 4: Edge Not Attempted**
@@ -3611,12 +4002,12 @@ Reporting to CloakPipe...
    - Or publish to Firefox only: --stores firefox
 ```
 
-**Step 6: CloakPipe Creates Issue**
+**Step 6: Gatekeeper Creates GitHub Issue**
 
 ```
-Title: [Gatekeeper] PublishingError: Failed to publish ConvertMyFile v1.2.3 to Firefox
+Title: [ConvertMyFile] QuotaExceededError: AMO API returned 429 (rate limit exceeded)
 
-Labels: robot, gatekeeper, firefox
+Labels: robot, convert-my-file, gatekeeper, store:firefox, phase:upload
 
 Body:
 ## Error Details
@@ -3678,7 +4069,7 @@ await gh.issue.close(issueNumber);
 ### For Existing Extensions
 
 **Phase 1: Pilot with Convert My File** (Week 1)
-1. Implement Phases 1-2 of Gatekeeper (npm package + CloakPipe integration)
+1. Implement Phases 1-2 of Gatekeeper (npm package + Homeostat error reporting)
 2. Add publishing workflow to Convert My File only
 3. Test end-to-end publishing (Chrome, Firefox)
 4. Validate error reporting and Homeostat integration
@@ -3727,7 +4118,7 @@ Gatekeeper provides a **scalable, cost-effective, and future-proof** solution fo
 ✅ **67% Maintenance Savings**: Bug fixes in 1 place vs 3-12 places
 ✅ **$0/year Operating Cost**: GitHub Actions included in Team plan
 ✅ **12-17 Hours Implementation**: Comprehensive system in 2-3 weeks
-✅ **Seamless Integration**: Works with CloakPipe and Homeostat
+✅ **Seamless Homeostat Integration**: Direct GitHub Issues API (Octokit) for auto-fixes
 ✅ **Multi-Browser Ready**: Chrome, Firefox, Edge from day one
 ✅ **Conditional Approval Gates**: Smart automation (patches automatic, major/minor require approval)
 ✅ **Future-Proof Architecture**: Ready for iOS, Android, Windows apps
