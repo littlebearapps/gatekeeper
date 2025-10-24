@@ -11,7 +11,7 @@
 
 1. [Executive Summary](#executive-summary)
 2. [Architecture Overview](#architecture-overview)
-3. [Integration with Logger and Homeostat](#integration-with-logger-and-homeostat)
+3. [Integration with CloakPipe and Homeostat](#integration-with-cloakpipe-and-homeostat)
 4. [Multi-Browser Support](#multi-browser-support)
 5. [Conditional Approval Gates](#conditional-approval-gates)
 6. [Native App Store Support Architecture](#native-app-store-support-architecture)
@@ -36,7 +36,7 @@
 
 **Gatekeeper** is a centralized browser extension publishing system that automates deployment to multiple browser stores (Chrome, Firefox, Edge, Safari) while integrating seamlessly with Little Bear Apps' existing infrastructure:
 
-- **Logger**: Privacy-first error logging (3-tier: Local → Plausible → GitHub Issues)
+- **CloakPipe**: Privacy-first error logging (3-tier: Local → Plausible → GitHub Issues)
 - **Homeostat**: Automated bug-fixing system (AI-powered with $9.28/year cost)
 
 ### Why Gatekeeper?
@@ -64,7 +64,7 @@
 | **Scalability** | Adding 4th extension: 10 min vs 2 hours |
 | **Operating Cost** | $0/year (GitHub Actions included) |
 | **Multi-Browser** | Chrome, Firefox, Edge ready; Safari Phase 2 |
-| **Error Integration** | Publishing errors → Logger → Homeostat |
+| **Error Integration** | Publishing errors → CloakPipe → Homeostat |
 | **Approval Gates** | GitHub Environments with required reviewers |
 
 ### Architecture at a Glance
@@ -83,13 +83,13 @@
 │  - Validate manifest (cross-browser)                        │
 │  - Package extension (.zip, .xpi)                          │
 │  - Publish to stores (chrome.js, firefox.js, edge.js)     │
-│  - Report errors to Logger                                  │
+│  - Report errors to CloakPipe                                  │
 └────────────────────┬────────────────────────────────────────┘
                      │
          ┌───────────┴───────────┐
          ▼                       ▼
 ┌─────────────────┐     ┌─────────────────┐
-│  Browser Stores │     │  Logger → Robot │
+│  Browser Stores │     │  CloakPipe → Robot │
 │  - Chrome CWS   │     │  - Creates issue│
 │  - Firefox AMO  │     │  - robot label  │
 │  - Edge Store   │     └────────┬────────┘
@@ -118,7 +118,7 @@ Gatekeeper uses a **hybrid architecture** that balances code reuse with per-exte
 
 **Contains**:
 - Browser publisher modules (chrome.js, firefox.js, edge.js, safari.js)
-- Core utilities (validator, packager, logger integration)
+- Core utilities (validator, packager, cloakpipe integration)
 - CLI interface for ease of use
 - Comprehensive test suite (unit + integration)
 
@@ -126,11 +126,11 @@ Gatekeeper uses a **hybrid architecture** that balances code reuse with per-exte
 
 **Purpose**: Orchestration, monitoring, and reusable workflows
 **Location**: `~/claude-code-tools/lba/tools/gatekeeper/main/`
-**Pattern**: Matches logger and homeostat architecture
+**Pattern**: Matches cloakpipe and homeostat architecture
 
 **Contains**:
 - Reusable GitHub Actions workflows
-- Integration glue for logger/homeostat
+- Integration glue for cloakpipe/homeostat
 - Monitoring dashboards and scripts
 - Documentation and setup guides
 - Credential management helpers
@@ -161,27 +161,27 @@ Gatekeeper uses a **hybrid architecture** that balances code reuse with per-exte
 - All extensions get new browser support automatically
 
 **Integrates with Existing Infrastructure**:
-- Logger: Publishing errors create GitHub issues
+- CloakPipe: Publishing errors create GitHub issues
 - Homeostat: Automated fixes for publishing failures
 - GitHub Projects: Track releases across all extensions
 - Linear: ConvertMyFile, NoteBridge, PaletteKit task management
 
 ---
 
-## Integration with Logger and Homeostat
+## Integration with CloakPipe and Homeostat
 
 ### Publishing Error Flow
 
-Gatekeeper integrates seamlessly with Logger and Homeostat to provide **automated error handling and fixes**:
+Gatekeeper integrates seamlessly with CloakPipe and Homeostat to provide **automated error handling and fixes**:
 
 ```
 Extension publishes → Publishing fails (e.g., manifest error)
                            ↓
          @littlebearapps/gatekeeper catches error
                            ↓
-         Reports to Logger: https://errors.littlebearapps.com/report
+         Reports to CloakPipe: https://errors.littlebearapps.com/report
                            ↓
-         Logger sanitizes PII, creates GitHub issue with 'robot' label
+         CloakPipe sanitizes PII, creates GitHub issue with 'robot' label
                            ↓
          Homeostat detects 'robot' label, analyzes error
                            ↓
@@ -194,14 +194,14 @@ Extension publishes → Publishing fails (e.g., manifest error)
          If tests fail → Escalate to human (add 'needs-human-review' label)
 ```
 
-### Logger Integration
+### CloakPipe Integration
 
-**How Gatekeeper Uses Logger**:
+**How Gatekeeper Uses CloakPipe**:
 
 ```javascript
 // In @littlebearapps/gatekeeper/src/publishers/chrome.js
 
-import { ErrorLogger } from '../core/logger.js';
+import { ErrorCloakPipe } from '../core/cloakpipe.js';
 
 export class ChromePublisher extends BasePublisher {
   async publish(artifact, credentials) {
@@ -222,8 +222,8 @@ export class ChromePublisher extends BasePublisher {
         url: publishResult.itemUrl
       };
     } catch (error) {
-      // Report to Logger → Creates GitHub issue with 'robot' label
-      await ErrorLogger.report({
+      // Report to CloakPipe → Creates GitHub issue with 'robot' label
+      await ErrorCloakPipe.report({
         extension: artifact.name,
         errorType: 'PublishingError',
         message: `Failed to publish to Chrome: ${error.message}`,
@@ -241,7 +241,7 @@ export class ChromePublisher extends BasePublisher {
 }
 ```
 
-**Logger Configuration**:
+**CloakPipe Configuration**:
 - Endpoint: `https://errors.littlebearapps.com/report` (Cloudflare Worker)
 - PII Sanitization: 18+ patterns (user paths, API keys, tokens, emails)
 - Issue Format: `[Gatekeeper] PublishingError: Failed to publish ConvertMyFile v1.2.3 to Chrome`
@@ -323,7 +323,7 @@ async function attemptPublishingFix(error, issueNumber) {
 ### Integration Benefits
 
 **Automated Error Recovery**:
-- Publishing fails → Logger creates issue → Homeostat fixes → Retry succeeds
+- Publishing fails → CloakPipe creates issue → Homeostat fixes → Retry succeeds
 - No manual intervention for common errors (manifest, permissions, CSP)
 - Human only involved when automated fixes fail (< 20% of cases)
 
@@ -372,8 +372,8 @@ export class BasePublisher {
   }
 
   async reportError(error, context) {
-    // Report to Logger for all publishers
-    await ErrorLogger.report({ ...error, context });
+    // Report to CloakPipe for all publishers
+    await ErrorCloakPipe.report({ ...error, context });
   }
 }
 ```
@@ -977,7 +977,7 @@ npx @littlebearapps/gatekeeper publish \
 **Business Benefits**:
 - ✅ Ready for platform expansion (no architectural debt)
 - ✅ Consistent publishing workflows across all platforms
-- ✅ Shared error handling and monitoring (Logger/Homeostat)
+- ✅ Shared error handling and monitoring (CloakPipe/Homeostat)
 - ✅ Developer familiarity (same CLI for all stores)
 
 ---
@@ -1713,7 +1713,7 @@ console.log(results);
    - Create `BasePublisher` abstract class
    - Define common methods (validate, package, upload, publish, cancel)
    - Implement PII sanitization utilities
-   - Implement error reporting to Logger
+   - Implement error reporting to CloakPipe
 
 3. **Implement Chrome Publisher** (2 hours)
    - CWS API v2 integration
@@ -1760,35 +1760,35 @@ npm publish @littlebearapps/gatekeeper@0.1.0
 
 ---
 
-### Phase 2: Logger Integration (1 hour)
+### Phase 2: CloakPipe Integration (1 hour)
 
-**Goal**: Integrate publishing error reporting with Logger
+**Goal**: Integrate publishing error reporting with CloakPipe
 
 **Tasks**:
 
-1. **Add Logger Client** (30 min)
-   - Create `src/core/logger.js` module
-   - Integrate with Logger endpoint: `https://errors.littlebearapps.com/report`
+1. **Add CloakPipe Client** (30 min)
+   - Create `src/core/cloakpipe.js` module
+   - Integrate with CloakPipe endpoint: `https://errors.littlebearapps.com/report`
    - PII sanitization for publishing errors
    - Error formatting for GitHub issues
 
 2. **Update Publishers with Error Reporting** (30 min)
    - Add try-catch blocks in all publisher methods
-   - Report errors to Logger with context (store, version, phase)
-   - Test error flow: Publishing failure → Logger → GitHub issue
+   - Report errors to CloakPipe with context (store, version, phase)
+   - Test error flow: Publishing failure → CloakPipe → GitHub issue
 
 **Example Error Logging**:
 
 ```javascript
-// In src/core/logger.js
+// In src/core/cloakpipe.js
 
-export class ErrorLogger {
+export class ErrorCloakPipe {
   static async report({ extension, errorType, message, context, stackTrace }) {
     // Sanitize PII
     const sanitizedStack = sanitize(stackTrace);
     const sanitizedMessage = sanitize(message);
 
-    // Report to Logger endpoint
+    // Report to CloakPipe endpoint
     await fetch('https://errors.littlebearapps.com/report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1824,7 +1824,7 @@ npx @littlebearapps/gatekeeper publish \
 # Body: Sanitized error details
 ```
 
-**Deliverable**: Logger integration complete and tested
+**Deliverable**: CloakPipe integration complete and tested
 
 ---
 
@@ -1991,7 +1991,7 @@ const PUBLISHING_ERROR_PATTERNS = {
 
 3. **Test Automated Fixes** (1 hour)
    - Trigger manifest validation error
-   - Verify Logger creates issue
+   - Verify CloakPipe creates issue
    - Verify Homeostat detects and fixes
    - Verify tests pass
    - Verify PR created and merged
@@ -2136,8 +2136,8 @@ async function publishToMultipleStores(stores, artifact, credentials) {
         error: error.message
       };
 
-      // Report to Logger
-      await ErrorLogger.report({
+      // Report to CloakPipe
+      await ErrorCloakPipe.report({
         extension: artifact.name,
         errorType: 'PublishingError',
         message: `Failed to publish to ${store}: ${error.message}`,
@@ -2515,7 +2515,7 @@ jobs:
 
 **Option A: Single npm Package with All Browsers** (chosen)
 - ✅ Consistent versioning across all browsers
-- ✅ Shared utilities (validator, packager, logger)
+- ✅ Shared utilities (validator, packager, cloakpipe)
 - ✅ Simpler dependency management (1 package vs 4)
 - ❌ Larger package size (~2-3 MB vs ~500 KB per browser)
 
@@ -2579,7 +2579,7 @@ npx @littlebearapps/gatekeeper publish \
 | Phase | Duration | Description |
 |-------|----------|-------------|
 | Phase 1 | 5-7 hours | Core npm package (Chrome + Firefox) + CWS API v2 enhancements + Native app store architecture |
-| Phase 2 | 1 hour | Logger integration |
+| Phase 2 | 1 hour | CloakPipe integration |
 | Phase 3 | 2-3 hours | Extension integration (all 3 extensions) |
 | Phase 4 | 1-2 hours | Homeostat integration |
 | Phase 5 | 2-3 hours | Edge publisher + monitoring |
@@ -2691,7 +2691,7 @@ npx @littlebearapps/gatekeeper publish \
 - ✅ All 3 extensions successfully publish to Chrome Web Store
 - ✅ All 3 extensions successfully publish to Firefox Add-ons
 - ✅ All 3 extensions successfully publish to Microsoft Edge (Phase 5)
-- ✅ Publishing errors reported to Logger (GitHub issues created)
+- ✅ Publishing errors reported to CloakPipe (GitHub issues created)
 - ✅ Homeostat can fix common publishing errors (manifest, permissions, CSP)
 - ✅ 100% test coverage for publisher modules (unit + integration)
 - ✅ Zero manual steps required (except approval gate)
@@ -2745,7 +2745,7 @@ npx @littlebearapps/gatekeeper publish \
 │   ├── core/
 │   │   ├── validator.js         # Manifest validation (web-ext)
 │   │   ├── packager.js          # .zip/.xpi creation
-│   │   ├── logger.js            # Logger integration
+│   │   ├── cloakpipe.js            # CloakPipe integration
 │   │   └── config.js            # Configuration management
 │   └── utils/
 │       ├── auth.js              # Store authentication
@@ -3128,9 +3128,9 @@ gh release create v1.1.0 \
 
 ---
 
-### Step 7: Verify Logger Integration (5 minutes)
+### Step 7: Verify CloakPipe Integration (5 minutes)
 
-**Action**: Ensure publishing errors are reported to Logger
+**Action**: Ensure publishing errors are reported to CloakPipe
 
 #### 7.1: Trigger Validation Error
 
@@ -3146,7 +3146,7 @@ Create invalid manifest to test error reporting:
 
 #### 7.2: Verify Homeostat Response
 
-After Logger creates issue:
+After CloakPipe creates issue:
 - ✅ Homeostat detects `robot` label
 - ✅ Homeostat analyzes error
 - ✅ Homeostat attempts fix (if applicable)
@@ -3224,7 +3224,7 @@ Use this checklist when integrating Gatekeeper into each extension:
 - [ ] **Test Patch Release** (v1.0.1 - should auto-publish)
 - [ ] **Test Minor Release** (v1.1.0 - should require approval)
 - [ ] **Verify Stores**: Check Chrome, Firefox, Edge for published extension
-- [ ] **Test Error Reporting**: Trigger validation error, verify Logger creates issue
+- [ ] **Test Error Reporting**: Trigger validation error, verify CloakPipe creates issue
 - [ ] **Verify Homeostat**: Confirm automated fix attempt (if applicable)
 
 ### Documentation
@@ -3325,7 +3325,7 @@ Use this checklist when integrating Gatekeeper into each extension:
 - [ ] Verify all extensions have CI/CD (tests run on PR)
 - [ ] Verify all extensions have test suites
 - [ ] Verify package.json and manifest.json versions match
-- [ ] Verify Logger endpoint supports publishing errors
+- [ ] Verify CloakPipe endpoint supports publishing errors
 
 ---
 
@@ -3342,7 +3342,7 @@ Use this checklist when integrating Gatekeeper into each extension:
 #### Integration Prerequisites
 
 - [ ] Verify NoteBridge and PaletteKit have CI/CD
-- [ ] Verify Logger is deployed (NoteBridge already has it)
+- [ ] Verify CloakPipe is deployed (NoteBridge already has it)
 - [ ] Verify Homeostat is configured
 - [ ] Verify GitHub Projects access for tracking releases
 - [ ] Verify Linear integration (if using for task management)
@@ -3433,7 +3433,7 @@ gh release edit v1.2.3 \
 
 ---
 
-### Example 2: Publishing Error Triggers Logger and Homeostat
+### Example 2: Publishing Error Triggers CloakPipe and Homeostat
 
 **Step 1: Publishing Fails**
 
@@ -3448,10 +3448,10 @@ npx @littlebearapps/gatekeeper publish \
    - Validated manifest: FAILED
    - Error: ManifestValidationError: Missing required field 'permissions'
 
-Publishing failed. Reporting to Logger...
+Publishing failed. Reporting to CloakPipe...
 ```
 
-**Step 2: Logger Creates GitHub Issue**
+**Step 2: CloakPipe Creates GitHub Issue**
 
 ```
 Title: [Gatekeeper] PublishingError: Failed to publish ConvertMyFile v1.2.3 to Chrome
@@ -3582,7 +3582,7 @@ npx @littlebearapps/gatekeeper publish \
    - Signed with AMO: FAILED
    - Error: AMO API returned 429 (rate limit exceeded)
 
-Reporting to Logger...
+Reporting to CloakPipe...
 ```
 
 **Step 4: Edge Not Attempted**
@@ -3611,7 +3611,7 @@ Reporting to Logger...
    - Or publish to Firefox only: --stores firefox
 ```
 
-**Step 6: Logger Creates Issue**
+**Step 6: CloakPipe Creates Issue**
 
 ```
 Title: [Gatekeeper] PublishingError: Failed to publish ConvertMyFile v1.2.3 to Firefox
@@ -3678,7 +3678,7 @@ await gh.issue.close(issueNumber);
 ### For Existing Extensions
 
 **Phase 1: Pilot with Convert My File** (Week 1)
-1. Implement Phases 1-2 of Gatekeeper (npm package + Logger integration)
+1. Implement Phases 1-2 of Gatekeeper (npm package + CloakPipe integration)
 2. Add publishing workflow to Convert My File only
 3. Test end-to-end publishing (Chrome, Firefox)
 4. Validate error reporting and Homeostat integration
@@ -3727,7 +3727,7 @@ Gatekeeper provides a **scalable, cost-effective, and future-proof** solution fo
 ✅ **67% Maintenance Savings**: Bug fixes in 1 place vs 3-12 places
 ✅ **$0/year Operating Cost**: GitHub Actions included in Team plan
 ✅ **12-17 Hours Implementation**: Comprehensive system in 2-3 weeks
-✅ **Seamless Integration**: Works with Logger and Homeostat
+✅ **Seamless Integration**: Works with CloakPipe and Homeostat
 ✅ **Multi-Browser Ready**: Chrome, Firefox, Edge from day one
 ✅ **Conditional Approval Gates**: Smart automation (patches automatic, major/minor require approval)
 ✅ **Future-Proof Architecture**: Ready for iOS, Android, Windows apps

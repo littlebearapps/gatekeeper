@@ -9,13 +9,13 @@
 
 **Gatekeeper** - Centralized browser extension publishing system for Little Bear Apps.
 
-**Purpose**: Automates deployment to multiple browser stores (Chrome, Firefox, Edge, Safari) while integrating seamlessly with Logger and Homeostat infrastructure.
+**Purpose**: Automates deployment to multiple browser stores (Chrome, Firefox, Edge, Safari) while integrating seamlessly with CloakPipe and Homeostat infrastructure.
 
 **What It Does**:
 - Validates extension manifests (cross-browser compatibility)
 - Packages extensions (.zip, .xpi, .crx)
 - Publishes to browser stores (Chrome Web Store, Firefox AMO, Edge Store, Safari)
-- Reports publishing errors to Logger → Homeostat for automated fixes
+- Reports publishing errors to CloakPipe → Homeostat for automated fixes
 - Provides approval gates via GitHub Environments
 
 **Architecture**: Hybrid dual-repository pattern
@@ -141,7 +141,7 @@ git checkout -b feature/my-feature
 **Dependencies** (Planned):
 - `chrome-webstore-upload` - Chrome Web Store API v2
 - `web-ext` - Firefox AMO Signing API
-- `@littlebearapps/logger-integration` - Error reporting
+- `@littlebearapps/cloakpipe-integration` - Error reporting
 - GitHub Actions workflows for deployment
 
 **Architecture**:

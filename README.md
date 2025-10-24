@@ -8,13 +8,13 @@ Centralized browser extension publishing system for Little Bear Apps.
 
 ## Purpose
 
-Automates deployment to multiple browser stores while integrating with Logger and Homeostat:
+Automates deployment to multiple browser stores while integrating with CloakPipe and Homeostat:
 
 **What Gatekeeper Does**:
 - ✅ Validates extension manifests (cross-browser compatibility)
 - ✅ Packages extensions (.zip, .xpi, .crx)
 - ✅ Publishes to browser stores (Chrome, Firefox, Edge, Safari)
-- ✅ Reports errors to Logger → Homeostat (automated bug fixing)
+- ✅ Reports errors to CloakPipe → Homeostat (automated bug fixing)
 - ✅ Provides approval gates via GitHub Environments
 
 **Key Benefits**:
@@ -37,7 +37,7 @@ Automates deployment to multiple browser stores while integrating with Logger an
 
 2. **Coordination Repository** (this repo)
    - Reusable GitHub Actions workflows
-   - Integration with Logger/Homeostat
+   - Integration with CloakPipe/Homeostat
    - Monitoring dashboards
    - Documentation and setup guides
 
@@ -47,7 +47,7 @@ Automates deployment to multiple browser stores while integrating with Logger an
    - Approval gate configuration
 
 **Integration with LBA Systems**:
-- **Logger**: Publishing errors → GitHub issues
+- **CloakPipe**: Publishing errors → GitHub issues
 - **Homeostat**: Auto-fix publishing errors (AI-powered)
 
 ## Implementation Plan
@@ -98,7 +98,7 @@ npx gatekeeper validate manifest.json
 - [ ] Firefox AMO account + API keys
 - [ ] Microsoft Edge Partner Center account + credentials
 - [ ] GitHub Environments configured (dev, staging, production)
-- [ ] Logger deployed and operational
+- [ ] CloakPipe deployed and operational
 - [ ] Homeostat configured with `robot` label trigger
 
 **See**: `docs/GATEKEEPER-IMPLEMENTATION-PLAN.md` → "Prerequisites Checklist"
@@ -137,7 +137,7 @@ npm run build
 From `docs/GATEKEEPER-IMPLEMENTATION-PLAN.md`:
 1. Executive Summary - What, why, benefits
 2. Architecture Overview - Hybrid dual-repository pattern
-3. Integration with Logger/Homeostat - Error handling flow
+3. Integration with CloakPipe/Homeostat - Error handling flow
 4. Multi-Browser Support - Chrome, Firefox, Edge, Safari
 5. Implementation Phases - 6 phases (12-17 hours total)
 6. Prerequisites Checklist - Before you begin
@@ -153,7 +153,7 @@ Private - Little Bear Apps
 - ✅ npm package `@littlebearapps/gatekeeper` published
 - ✅ All 3 extensions successfully publish to Chrome Web Store
 - ✅ All 3 extensions successfully publish to Firefox AMO
-- ✅ Publishing errors auto-report to Logger
+- ✅ Publishing errors auto-report to CloakPipe
 - ✅ Homeostat auto-fixes publishing errors
 - ✅ Approval gates work (GitHub Environments)
 
