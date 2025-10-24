@@ -44,7 +44,7 @@ git checkout -b feature/my-feature
 
 ### MCP Configuration
 
-**Instance**: Zen Instance I (port 7519)
+**Instance**: Zen Instance K (port 7521)
 **Servers Available**:
 - zen (dedicated instance I)
 - brave-search (shared - research/full profiles only)

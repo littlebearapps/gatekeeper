@@ -63,7 +63,7 @@ git checkout -b feature/my-feature
 
 ## MCP Configuration
 
-**Zen Instance**: Instance I (port 7519)
+**Zen Instance**: Instance K (port 7521)
 
 **Servers Available**:
 - zen (dedicated instance I)
@@ -96,7 +96,7 @@ git checkout -b feature/my-feature
 - ✅ Repository created
 - ✅ Bare repo + main worktree structure
 - ✅ GitHub repo created (private)
-- ✅ MCP configuration (Zen instance I, port 7519)
+- ✅ MCP configuration (Zen instance K, port 7521)
 - 🔜 Define project scope and requirements
 - 🔜 Set up initial codebase structure
 
