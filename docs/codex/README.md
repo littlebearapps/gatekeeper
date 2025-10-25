@@ -41,6 +41,12 @@
 | 07 | `07-edge-publisher.md` | Microsoft Edge | EdgePublisher + mocks + tests |
 | 08 | `08-monitoring.md` | Observability | Logging, metrics, health checks |
 
+### PR#2 Completion: Workflows + Documentation (1 hour)
+
+| Prompt | File | Focus | Deliverable |
+|--------|------|-------|-------------|
+| 09 | `09-workflows-and-docs.md` | GitHub Actions + docs | Reusable workflows, updated README/CLAUDE.md |
+
 ---
 
 ## Workflow
