@@ -168,8 +168,6 @@ export class FirefoxPublisher extends BasePublisher {
     const commandParts = [
       'web-ext sign',
       `--source-dir ${quote(sourceDir)}`,
-      `--api-key ${quote(firefoxCredentials.apiKey)}`,
-      `--api-secret ${quote(firefoxCredentials.apiSecret)}`,
       `--channel ${channel}`,
       `--artifacts-dir ${quote(artifactsDir)}`
     ];
@@ -180,8 +178,14 @@ export class FirefoxPublisher extends BasePublisher {
 
     const command = commandParts.join(' ');
 
+    const env = {
+      ...process.env,
+      WEB_EXT_API_KEY: firefoxCredentials.apiKey,
+      WEB_EXT_API_SECRET: firefoxCredentials.apiSecret
+    };
+
     try {
-      const { stdout } = await execAsync(command, { env: process.env });
+      const { stdout } = await execAsync(command, { env });
       const urlMatch = stdout?.match(/https?:\/\/\S+/i);
       return {
         success: true,
