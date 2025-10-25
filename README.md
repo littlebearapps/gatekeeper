@@ -4,7 +4,17 @@ Centralized browser extension publishing system for Little Bear Apps.
 
 ## Status
 
-🎯 **Ready for Phase 1** - Architecture validated (GPT-5), implementation plan complete
+✅ **Phase 1 Complete** - Core npm package (Chrome, Firefox)
+✅ **Phase 2 Complete** - Homeostat error reporting
+✅ **Phase 5 Complete** - Edge publisher + monitoring
+🔜 **Phase 3 Next** - Extension integration (3 extensions)
+🔜 **Phase 4 Next** - Pilot deployment and testing
+
+**Implementation Status**:
+- npm Package: `@littlebearapps/gatekeeper@0.1.0` (ready to publish)
+- Tests: 79/79 passing ✅
+- Browsers: Chrome ✅ | Firefox ✅ | Edge ✅ | Safari 🔜
+- Extensions: 0/3 integrated (Phase 3 pending)
 
 ## Purpose
 
@@ -13,7 +23,7 @@ Automates deployment to multiple browser stores while integrating with CloakPipe
 **What Gatekeeper Does**:
 - ✅ Validates extension manifests (cross-browser compatibility)
 - ✅ Packages extensions (.zip, .xpi, .crx)
-- ✅ Publishes to browser stores (Chrome, Firefox, Edge, Safari)
+- ✅ Publishes to browser stores (Chrome, Firefox, Edge — Safari planned)
 - ✅ Reports errors to CloakPipe → Homeostat (automated bug fixing)
 - ✅ Provides approval gates via GitHub Environments
 
@@ -24,6 +34,27 @@ Automates deployment to multiple browser stores while integrating with CloakPipe
 - **$0/year Operating Cost**: GitHub Actions included
 
 **Target Extensions**: Convert My File, NoteBridge, PaletteKit
+
+## Features
+
+**Completed** (Phases 1, 2, 5):
+- ✅ Chrome Web Store publisher (WIF auth, staged publish, rollout)
+- ✅ Firefox AMO publisher (web-ext integration, listed/unlisted)
+- ✅ Microsoft Edge publisher (Azure AD OAuth2)
+- ✅ Manifest validation (cross-browser compatibility)
+- ✅ Packaging (.zip, .xpi)
+- ✅ Error reporting to Homeostat (GitHub Issues API)
+- ✅ CLI interface (`gatekeeper publish`, `gatekeeper validate`)
+- ✅ Retry logic with exponential backoff
+- ✅ PII sanitization
+- ✅ Structured logging and metrics
+- ✅ Health checks for all store APIs
+- ✅ Comprehensive test suite (79 tests)
+
+**Pending** (Phases 3-4):
+- 🔜 Extension integration (Convert My File, NoteBridge, PaletteKit)
+- 🔜 Production deployment and pilot testing
+- 🔜 Safari App Store publisher (future)
 
 ## Architecture
 

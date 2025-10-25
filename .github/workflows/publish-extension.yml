@@ -1,0 +1,96 @@
+name: Publish Extension
+
+on:
+  workflow_call:
+    inputs:
+      manifest-path:
+        description: 'Path to manifest.json'
+        required: true
+        type: string
+      stores:
+        description: 'Comma-separated list of stores (chrome,firefox,edge)'
+        required: true
+        type: string
+      extension-name:
+        description: 'Extension name for reporting'
+        required: true
+        type: string
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+      CWS_PUBLISHER_ID:
+        required: false
+      CWS_ITEM_ID:
+        required: false
+      CWS_WIF_CONFIG:
+        required: false
+      AMO_API_KEY:
+        required: false
+      AMO_API_SECRET:
+        required: false
+      EDGE_CLIENT_ID:
+        required: false
+      EDGE_CLIENT_SECRET:
+        required: false
+      EDGE_PRODUCT_ID:
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout extension repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install gatekeeper
+        run: npm install -g @littlebearapps/gatekeeper
+
+      - name: Create gatekeeper config
+        run: |
+          cat > .gatekeeperrc.json <<'CONFIG'
+          {
+            "githubToken": "${{ secrets.GITHUB_TOKEN }}",
+            "repo": "${{ github.repository }}",
+            "browsers": ["${{ inputs.stores }}"],
+            "credentials": {
+              "chrome": {
+                "publisherId": "${{ secrets.CWS_PUBLISHER_ID }}",
+                "itemId": "${{ secrets.CWS_ITEM_ID }}",
+                "wifConfig": ${{ secrets.CWS_WIF_CONFIG }}
+              },
+              "firefox": {
+                "apiKey": "${{ secrets.AMO_API_KEY }}",
+                "apiSecret": "${{ secrets.AMO_API_SECRET }}"
+              },
+              "edge": {
+                "clientId": "${{ secrets.EDGE_CLIENT_ID }}",
+                "clientSecret": "${{ secrets.EDGE_CLIENT_SECRET }}",
+                "productId": "${{ secrets.EDGE_PRODUCT_ID }}"
+              }
+            }
+          }
+CONFIG
+
+      - name: Publish to stores
+        id: publish
+        run: |
+          gatekeeper publish \
+            --manifest ${{ inputs.manifest-path }} \
+            --stores ${{ inputs.stores }} \
+            --config .gatekeeperrc.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "✅ Published ${{ inputs.extension-name }} to ${{ inputs.stores }}"
+          echo "See logs above for details"
