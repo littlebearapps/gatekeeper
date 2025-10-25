@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Edge Test Extension",
+  "version": "1.0.0",
+  "description": "Fixture manifest for Edge publisher tests",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

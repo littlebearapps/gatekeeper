@@ -182,6 +182,18 @@ const RETRY_CONFIG = {
 
 ## Rolling Changelog
 
+**Phase 1, 2, 5 Complete** (2025-10-25):
+- ✅ All 8 Codex prompts implemented (01-08)
+- ✅ Publishers: Chrome, Firefox, Edge (3/4 browsers)
+- ✅ Utilities: retry, sanitize, auth
+- ✅ CLI: `gatekeeper publish`, `gatekeeper validate`, `gatekeeper cancel`
+- ✅ Homeostat integration (GitHub Issues API via Octokit)
+- ✅ Monitoring: structured logging, metrics, health checks
+- ✅ Tests: 79/79 passing, smoke tests passing
+- ✅ GitHub Actions: reusable workflows created
+- ✅ Documentation: updated to reflect completion status
+- 🔜 Next: Publish npm package, integrate into extensions (Phase 3)
+
 **Initial State** (2025-10-24):
 - Repository structure created
 - Implementation plan complete (4,100+ lines, GPT-5 validated)

@@ -1,0 +1,36 @@
+{
+  "name": "@littlebearapps/gatekeeper",
+  "version": "0.1.0",
+  "description": "Centralized browser extension publishing orchestrator for Little Bear Apps.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "gatekeeper": "./src/cli.js"
+  },
+  "files": [
+    "src",
+    "scripts"
+  ],
+  "scripts": {
+    "test": "vitest",
+    "smoke": "node scripts/smoke-test.js"
+  },
+  "keywords": [
+    "browser",
+    "extension",
+    "deployment",
+    "automation"
+  ],
+  "author": "Little Bear Apps",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "vitest": "^1.1.0"
+  },
+  "dependencies": {
+    "@octokit/rest": "^22.0.0",
+    "commander": "^11.1.0"
+  }
+}
