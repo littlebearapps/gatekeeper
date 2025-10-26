@@ -1,4 +1,8 @@
-name: Publish Extension
+name: Publish Extension (reusable – called by extension repos)
+
+# This workflow is designed to be called by extension repositories only.
+# It will not run on push/PR events in this repository.
+# Usage: uses: littlebearapps/gatekeeper/.github/workflows/publish-extension.yml@v1
 
 on:
   workflow_call:
@@ -37,6 +41,8 @@ on:
 
 jobs:
   publish:
+    # Only run when called by another workflow, never on push/PR
+    if: github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     environment: production
 
