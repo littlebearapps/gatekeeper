@@ -65,7 +65,7 @@ jobs:
 
       - name: Create gatekeeper config
         run: |
-          cat > .gatekeeperrc.json <<'CONFIG'
+          cat > .gatekeeperrc.json << 'EOF'
           {
             "githubToken": "${{ secrets.GITHUB_TOKEN }}",
             "repo": "${{ github.repository }}",
@@ -87,7 +87,7 @@ jobs:
               }
             }
           }
-CONFIG
+          EOF
 
       - name: Publish to stores
         id: publish
