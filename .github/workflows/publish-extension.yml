@@ -20,8 +20,8 @@ on:
         required: true
         type: string
     secrets:
-      GITHUB_TOKEN:
-        required: true
+      # Note: GITHUB_TOKEN is automatically provided to reusable workflows
+      # Do not declare it here - use secrets.GITHUB_TOKEN directly in steps
       CWS_PUBLISHER_ID:
         required: false
       CWS_ITEM_ID:
@@ -45,6 +45,10 @@ jobs:
     if: github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
 
     steps:
       - name: Checkout extension repository
