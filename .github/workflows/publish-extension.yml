@@ -1,4 +1,8 @@
-name: Publish Extension
+name: Publish Extension (reusable – called by extension repos)
+
+# This workflow is designed to be called by extension repositories only.
+# It will not run on push/PR events in this repository.
+# Usage: uses: littlebearapps/gatekeeper/.github/workflows/publish-extension.yml@v1
 
 on:
   workflow_call:
@@ -16,8 +20,8 @@ on:
         required: true
         type: string
     secrets:
-      GITHUB_TOKEN:
-        required: true
+      # Note: GITHUB_TOKEN is automatically provided to reusable workflows
+      # Do not declare it here - use secrets.GITHUB_TOKEN directly in steps
       CWS_PUBLISHER_ID:
         required: false
       CWS_ITEM_ID:
@@ -37,8 +41,14 @@ on:
 
 jobs:
   publish:
+    # Only run when called by another workflow, never on push/PR
+    if: github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
 
     steps:
       - name: Checkout extension repository
@@ -55,7 +65,7 @@ jobs:
 
       - name: Create gatekeeper config
         run: |
-          cat > .gatekeeperrc.json <<'CONFIG'
+          cat > .gatekeeperrc.json << 'EOF'
           {
             "githubToken": "${{ secrets.GITHUB_TOKEN }}",
             "repo": "${{ github.repository }}",
@@ -77,7 +87,7 @@ jobs:
               }
             }
           }
-CONFIG
+          EOF
 
       - name: Publish to stores
         id: publish
