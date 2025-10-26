@@ -1,7 +1,7 @@
 {
   "name": "@littlebearapps/gatekeeper",
   "version": "0.1.0",
-  "description": "Centralized browser extension publishing orchestrator for Little Bear Apps.",
+  "description": "Automate browser extension publishing to Chrome, Firefox, and Edge stores with a single command",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
@@ -16,21 +16,44 @@
   ],
   "scripts": {
     "test": "vitest",
-    "smoke": "node scripts/smoke-test.js"
+    "smoke": "node scripts/smoke-test.js",
+    "prepublishOnly": "npm test"
   },
   "keywords": [
-    "browser",
-    "extension",
+    "browser-extension",
+    "chrome-extension",
+    "firefox-addon",
+    "microsoft-edge",
+    "webextension",
+    "publishing",
     "deployment",
-    "automation"
+    "automation",
+    "github-actions",
+    "chrome-web-store",
+    "firefox-amo",
+    "ci-cd"
   ],
   "author": "Little Bear Apps",
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/littlebearapps/gatekeeper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/littlebearapps/gatekeeper/issues"
+  },
+  "homepage": "https://github.com/littlebearapps/gatekeeper#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "devDependencies": {
     "vitest": "^1.1.0"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.0",
-    "commander": "^11.1.0"
+    "archiver": "^6.0.0",
+    "commander": "^11.1.0",
+    "google-auth-library": "^9.0.0",
+    "web-ext": "^7.9.0"
   }
 }
